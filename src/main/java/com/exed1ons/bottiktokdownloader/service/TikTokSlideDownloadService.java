@@ -1,5 +1,6 @@
 package com.exed1ons.bottiktokdownloader.service;
 
+import org.json.JSONObject;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -14,7 +15,6 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -106,15 +106,16 @@ public class TikTokSlideDownloadService {
 
     private String sendPostRequest(String tiktokUrl) {
         logger.info("Sending POST request to TikTok API with URL: " + tiktokUrl);
-        String apiUrl = "https://tiktokio.cc/api/v1/tk-htmx";
-        String prefix = "dtGslxrcdcG9raW8uY2MO0O0O";
+        String apiUrl = "https://tikio.com/api/v1/tk/html";
+        String prefix = "tikio.com";
 
-        String formData = String.format("prefix=%s&vid=%s",
-                URLEncoder.encode(prefix, StandardCharsets.UTF_8),
-                URLEncoder.encode(tiktokUrl, StandardCharsets.UTF_8));
+        String jsonBody = new JSONObject()
+                .put("vid", tiktokUrl)
+                .put("prefix", prefix)
+                .toString();
 
         try {
-            HttpURLConnection conn = getHttpURLConnection(apiUrl, formData);
+            HttpURLConnection conn = getHttpURLConnection(apiUrl, jsonBody);
 
             int responseCode = conn.getResponseCode();
             logger.info("POST request response code: " + responseCode);
@@ -137,16 +138,18 @@ public class TikTokSlideDownloadService {
         }
     }
 
-    private static HttpURLConnection getHttpURLConnection(String apiUrl, String formData) throws IOException {
+    private static HttpURLConnection getHttpURLConnection(String apiUrl, String jsonBody) throws IOException {
         URL url = new URL(apiUrl);
         HttpURLConnection conn = (HttpURLConnection) url.openConnection();
         conn.setRequestMethod("POST");
-        conn.setRequestProperty("Content-Type", "application/x-www-form-urlencoded");
+        conn.setRequestProperty("Content-Type", "application/json");
         conn.setRequestProperty("Accept", "*/*");
+        conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+        conn.setRequestProperty("Referer", "https://tikio.com/");
         conn.setDoOutput(true);
 
         try (OutputStream os = conn.getOutputStream()) {
-            byte[] input = formData.getBytes(StandardCharsets.UTF_8);
+            byte[] input = jsonBody.getBytes(StandardCharsets.UTF_8);
             os.write(input, 0, input.length);
         }
         return conn;
