@@ -1,8 +1,6 @@
 package com.exed1ons.bottiktokdownloader.bot;
 
-import com.exed1ons.bottiktokdownloader.dao.model.GroupMember;
 import com.exed1ons.bottiktokdownloader.service.*;
-import jakarta.persistence.EntityNotFoundException;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -11,11 +9,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.GetFile;
-import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChatAdministrators;
 import org.telegram.telegrambots.meta.api.methods.send.*;
 import org.telegram.telegrambots.meta.api.methods.updatingmessages.DeleteMessage;
 import org.telegram.telegrambots.meta.api.objects.*;
-import org.telegram.telegrambots.meta.api.objects.chatmember.ChatMember;
 import org.telegram.telegrambots.meta.api.objects.media.InputMediaPhoto;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
@@ -48,8 +44,6 @@ public class TiktokSenderBot extends TelegramLongPollingBot {
     private final SendSongService sendSongService;
     private final TikTokSlideDownloadService tikTokSlideDownloadService;
     private final Mp4ToGifConverter mp4ToGifConverter;
-    private final GroupMemberService groupMemberService;
-    private final RoleNameService roleNameService;
 
     private static final Logger logger = LoggerFactory.getLogger(TiktokSenderBot.class);
 
@@ -57,8 +51,7 @@ public class TiktokSenderBot extends TelegramLongPollingBot {
                            SendTikTokService sendTikTokService, TikTokLinkConverter tikTokLinkConverter,
                            SendReelService sendReelService, ImageToMp4Converter imageToMp4Converter,
                            SendSongService sendSongService, TikTokSlideDownloadService tikTokSlideDownloadService,
-                           Mp4ToGifConverter mp4ToGifConverter, GroupMemberService groupMemberService,
-                           RoleNameService roleNameService) {
+                           Mp4ToGifConverter mp4ToGifConverter) {
 
         super(botToken);
         this.botName = botName;
@@ -70,8 +63,6 @@ public class TiktokSenderBot extends TelegramLongPollingBot {
         this.sendSongService = sendSongService;
         this.tikTokSlideDownloadService = tikTokSlideDownloadService;
         this.mp4ToGifConverter = mp4ToGifConverter;
-        this.groupMemberService = groupMemberService;
-        this.roleNameService = roleNameService;
     }
 
     @Override
@@ -92,8 +83,6 @@ public class TiktokSenderBot extends TelegramLongPollingBot {
 
                 if (messageText.startsWith("/")) {
                     handleCommands(message, messageText, chatId);
-                } else if (messageText.startsWith("@")) {
-                    handleMentions(messageText, chatId);
                 } else {
                     processMessage(message);
                 }
@@ -104,135 +93,8 @@ public class TiktokSenderBot extends TelegramLongPollingBot {
     private void handleCommands(Message message, String messageText, String chatId) {
         if (messageText.equals("/gif") && message.isReply()) {
             handleGifCommand(message);
-        } else if (messageText.equals("/init")) {
-            initializeGroupMembers(chatId);
-            sendMessage(chatId, "Group members initialized.");
-        } else if (messageText.startsWith("/addrole")) {
-            addRole(messageText, chatId);
-        } else if (messageText.startsWith("/setrole")) {
-            assignRole(message, messageText, chatId);
-        } else if (messageText.startsWith("/removerole")) {
-            removeRole(messageText, chatId);
-        } else if (messageText.startsWith("/unsetrole")) {
-            unsetRole(message, messageText, chatId);
-        } else if (messageText.startsWith("/tag")) {
-            String[] parts = messageText.split(" ", 2);
-            if (parts.length > 1) {
-                tagMembersByRole(chatId, parts[1].trim());
-            } else {
-                sendMessage(chatId, "Usage: /tag <role_name>");
-            }
         } else {
             processMessage(message);
-        }
-    }
-
-    private void handleMentions(String messageText, String chatId) {
-        if (messageText.startsWith("@")) {
-            String roleName = messageText.substring(1).split("\\s+")[0];
-            tagMembersByRole(chatId, roleName);
-        }
-    }
-
-    private void addRole(String messageText, String chatId) {
-        String[] parts = messageText.split(" ", 2);
-        if (parts.length > 1) {
-            String roleName = parts[1].trim();
-            roleNameService.addRole(roleName);
-            sendMessage(chatId, "Role '" + roleName + "' has been added.");
-        } else {
-            sendMessage(chatId, "Usage: /addrole <role>");
-        }
-    }
-
-    private void assignRole(Message message, String messageText, String chatId) {
-        List<MessageEntity> entities = message.getEntities();
-        String[] parts = messageText.split(" ", 3);
-
-        if (parts.length > 2 && entities != null) {
-            String roleName = parts[1].trim();
-            Optional<Long> userIdOpt = extractUserIdFromMessage(message, entities);
-
-            if (userIdOpt.isPresent()) {
-                Long userId = userIdOpt.get();
-                try {
-                    groupMemberService.assignRoleToMember(userId, roleName);
-                    sendMessage(chatId, "Role '" + roleName + "' has been assigned to the mentioned user.");
-                } catch (EntityNotFoundException e) {
-                    sendMessage(chatId, e.getMessage());
-                }
-            } else {
-                sendMessage(chatId, "User not found or mention is invalid.");
-            }
-        } else {
-            sendMessage(chatId, "Usage: /setrole <role> <@username>");
-        }
-    }
-
-    private void removeRole(String messageText, String chatId) {
-        String[] parts = messageText.split(" ", 2);
-        if (parts.length > 1) {
-            String roleName = parts[1].trim();
-            if (roleNameService.removeRoleByName(roleName).isPresent()) {
-                sendMessage(chatId, "Role '" + roleName + "' has been removed.");
-            } else {
-                sendMessage(chatId, "Role '" + roleName + "' not found.");
-            }
-        } else {
-            sendMessage(chatId, "Usage: /removerole <role>");
-        }
-    }
-
-    private void unsetRole(Message message, String messageText, String chatId) {
-        List<MessageEntity> entities = message.getEntities();
-        String[] parts = messageText.split(" ", 3);
-
-        if (parts.length > 2 && entities != null) {
-            String roleName = parts[1].trim();
-            Optional<Long> userIdOpt = extractUserIdFromMessage(message, entities);
-
-            if (userIdOpt.isPresent()) {
-                Long userId = userIdOpt.get();
-                try {
-                    groupMemberService.removeRoleFromMember(userId, roleName);
-                    sendMessage(chatId, "Role '" + roleName + "' has been removed from the mentioned user.");
-                } catch (EntityNotFoundException e) {
-                    sendMessage(chatId, e.getMessage());
-                }
-            } else {
-                sendMessage(chatId, "User not found or mention is invalid.");
-            }
-        } else {
-            sendMessage(chatId, "Usage: /unsetrole <role> <@username>");
-        }
-    }
-
-    private Optional<Long> extractUserIdFromMessage(Message message, List<MessageEntity> entities) {
-        for (MessageEntity entity : entities) {
-            if (entity.getType().equals("text_mention")) {
-                return Optional.of(entity.getUser().getId());
-            } else if (entity.getType().equals("mention")) {
-                String username = message.getText().substring(entity.getOffset(), entity.getOffset() + entity.getLength()).substring(1);
-                return groupMemberService.findByUserName(username).map(GroupMember::getId);
-            }
-        }
-        return Optional.empty();
-    }
-
-    public void initializeGroupMembers(String chatId) {
-        try {
-            List<ChatMember> members = execute(new GetChatAdministrators(chatId));
-            int addedCount = 0;
-            for (ChatMember member : members) {
-                User user = member.getUser();
-                if (groupMemberService.findById(user.getId()).isEmpty()) {
-                    groupMemberService.addMember(user.getId(), user.getUserName(), user.getFirstName());
-                    addedCount++;
-                }
-            }
-            logger.info("Group members initialized. Added " + addedCount + " new members to the database.");
-        } catch (TelegramApiException e) {
-            logger.error("Failed to initialize group members", e);
         }
     }
 
@@ -251,29 +113,6 @@ public class TiktokSenderBot extends TelegramLongPollingBot {
             sendMessage(message.getChatId().toString(),
                     "/gif command should be used with a photo reply only");
         }
-    }
-
-    private void tagMembersByRole(String chatId, String roleName) {
-        List<GroupMember> membersWithRole;
-        if (roleName.equals("all") || roleName.equals("everyone")) {
-            membersWithRole = groupMemberService.findAll();
-        } else {
-            membersWithRole = groupMemberService.findByRoleName(roleName);
-        }
-
-        StringBuilder mentionText = new StringBuilder();
-        for (GroupMember member : membersWithRole) {
-            if (member.getUserName() != null) {
-                mentionText.append("@").append(member.getUserName()).append(" ");
-            } else {
-                mentionText.append("<a href=\"tg://user?id=")
-                        .append(member.getId())
-                        .append("\">")
-                        .append(Optional.ofNullable(member.getFirstName()).orElse("incognito"))
-                        .append("</a> ");
-            }
-        }
-        sendHtmlMessage(chatId, mentionText.toString());
     }
 
     private void processMessage(Message message) {
